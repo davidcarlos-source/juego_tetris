@@ -1,0 +1,334 @@
+.386
+.model flat, stdcall
+option casemap:none
+
+include \masm32\include\windows.inc
+include \masm32\include\kernel32.inc
+include \masm32\include\user32.inc
+include \masm32\include\masm32.inc
+include \masm32\macros\macros.asm
+
+includelib \masm32\lib\kernel32.lib
+includelib \masm32\lib\user32.lib
+includelib \masm32\lib\masm32.lib
+.data
+    tablero db 200 dup(0)  ; 10 columnas x 20 filas
+    ancho dd 10
+    alto dd 20
+    piezaActual dd 0
+    fila dd 0
+    columna dd 4
+    velocidad dd 500
+    hConsole dd 0
+    msgInicio db "Tetris en MASM32", 13, 10, 0
+    msgGameOver db "GAME OVER!", 13, 10, 0
+    formas dd offset formaCuadrado, offset formaLineaV, offset formaLineaH
+    colores dd 4, 2, 6  ; rojo, verde, amarillo
+    formaCuadrado db 1,1,0,0, 1,1,0,0, 0,0,0,0, 0,0,0,0
+    formaLineaV db 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0
+    formaLineaH db 1,1,1,1, 0,0,0,0, 0,0,0,0, 0,0,0,0
+
+.code
+
+; función para verificar colisión
+verificar_colision proc
+    mov esi, OFFSET formas
+    mov eax, [piezaActual]
+    mov esi, [esi + eax*4]
+    xor ecx, ecx  ; i = 0 to 3
+verificar_i:
+    cmp ecx, 4
+    je no_collision
+    xor edx, edx  ; j = 0 to 3
+verificar_j:
+    cmp edx, 4
+    je next_i
+    ; check if forma[ecx*4 + edx] == 1
+    mov eax, ecx
+    shl eax, 2
+    add eax, edx
+    mov al, [esi + eax]
+    cmp al, 1
+    jne next_j
+    ; calculate pos = (fila + ecx) * ancho + (columna + edx)
+    mov ebp, [columna]
+    add ebp, edx
+    cmp ebp, 0
+    jl collision
+    cmp ebp, [ancho]
+    jge collision
+    mov eax, [fila]
+    add eax, ecx
+    cmp eax, [alto]
+    jge collision
+    imul eax, ancho
+    add eax, ebp
+    cmp tablero[eax], 0
+    jne collision
+next_j:
+    inc edx
+    jmp verificar_j
+next_i:
+    inc ecx
+    jmp verificar_i
+no_collision:
+    mov eax, 0
+    ret
+collision:
+    mov eax, 1
+    ret
+verificar_colision endp
+
+; función para fijar pieza
+fijar_pieza proc
+    mov esi, OFFSET formas
+    mov eax, [piezaActual]
+    mov esi, [esi + eax*4]
+    xor ecx, ecx
+fijar_i:
+    cmp ecx, 4
+    je fijar_end
+    xor edx, edx
+fijar_j:
+    cmp edx, 4
+    je fijar_next_i
+    mov eax, ecx
+    shl eax, 2
+    add eax, edx
+    mov al, [esi + eax]
+    cmp al, 1
+    jne fijar_next_j
+    mov eax, [fila]
+    add eax, ecx
+    imul eax, [ancho]
+    add eax, [columna]
+    add eax, edx
+    mov ebx, [piezaActual]
+    inc ebx
+    mov tablero[eax], bl
+fijar_next_j:
+    inc edx
+    jmp fijar_j
+fijar_next_i:
+    inc ecx
+    jmp fijar_i
+fijar_end:
+    ret
+fijar_pieza endp
+
+; función para borrar líneas completas
+borrar_lineas proc
+    cld
+    mov ecx, [alto]
+    dec ecx
+scan_row:
+    mov edx, ecx
+    imul edx, [ancho]
+    mov esi, edx
+    mov ebx, [ancho]
+check_line:
+    mov al, tablero[esi]
+    cmp al, 0
+    je next_row
+    inc esi
+    dec ebx
+    jnz check_line
+    ; la fila está completa, desplazar todo hacia abajo
+    mov eax, ecx
+shift_rows:
+    cmp eax, 0
+    jl clear_top
+    mov edx, eax
+    dec edx
+    imul edx, [ancho]
+    mov esi, edx
+    mov edi, eax
+    imul edi, [ancho]
+    lea esi, tablero[esi]
+    lea edi, tablero[edi]
+    mov ecx, [ancho]
+    rep movsb
+    dec eax
+    jge shift_rows
+clear_top:
+    lea edi, tablero
+    mov ecx, [ancho]
+    xor al, al
+    rep stosb
+    jmp scan_row
+next_row:
+    dec ecx
+    jge scan_row
+    ret
+borrar_lineas endp
+
+; función para dibujar tablero
+dibujar_tablero proc
+    cls
+    invoke SetConsoleTextAttribute, [hConsole], 7
+    invoke StdOut, chr$("+--------------------+", 13, 10)
+    xor ebx, ebx  ; r = 0 to 19
+dibujar_r:
+    cmp ebx, [alto]
+    je dibujar_end
+    invoke StdOut, chr$("|")
+    xor edi, edi  ; c = 0 to 9
+dibujar_c:
+    cmp edi, [ancho]
+    je dibujar_next_r
+    ; check if current piece covers this pos
+    mov ebp, 0  ; is_piece = 0
+    mov esi, OFFSET formas
+    mov edx, [piezaActual]
+    mov esi, [esi + edx*4]
+    xor ecx, ecx  ; i
+check_piece_i:
+    cmp ecx, 4
+    je check_done
+    xor edx, edx  ; j
+check_piece_j:
+    cmp edx, 4
+    je check_next_i
+    mov eax, ecx
+    shl eax, 2
+    add eax, edx
+    cmp byte ptr [esi + eax], 1
+    jne check_next_j
+    mov eax, [fila]
+    add eax, ecx
+    cmp eax, ebx
+    jne check_next_j
+    mov eax, [columna]
+    add eax, edx
+    cmp eax, edi
+    jne check_next_j
+    mov ebp, 1
+    jmp check_done
+check_next_j:
+    inc edx
+    jmp check_piece_j
+check_next_i:
+    inc ecx
+    jmp check_piece_i
+check_done:
+    ; if is_piece or tablero[r*ancho + c]
+    mov edx, ebx
+    imul edx, ancho
+    add edx, edi
+    cmp tablero[edx], 0
+    jne draw_block_from_board
+    cmp ebp, 0
+    je draw_space
+draw_block:
+    mov eax, [piezaActual]
+    mov ecx, colores[eax*4]
+    invoke SetConsoleTextAttribute, [hConsole], ecx
+    invoke StdOut, chr$(219,219)
+    jmp next_c
+draw_block_from_board:
+    mov al, tablero[edx]
+    dec al
+    movzx eax, al
+    mov ecx, colores[eax*4]
+    invoke SetConsoleTextAttribute, [hConsole], ecx
+    invoke StdOut, chr$(219,219)
+    jmp next_c
+draw_space:
+    invoke SetConsoleTextAttribute, [hConsole], 7
+    invoke StdOut, chr$("  ")
+next_c:
+    inc edi
+    jmp dibujar_c
+dibujar_next_r:
+    invoke SetConsoleTextAttribute, [hConsole], 7
+    invoke StdOut, chr$("|",13,10)
+    inc ebx
+    jmp dibujar_r
+dibujar_end:
+    invoke SetConsoleTextAttribute, [hConsole], 7
+    invoke StdOut, chr$("+--------------------+", 13, 10)
+    ret
+dibujar_tablero endp
+
+start:
+    invoke AllocConsole
+    invoke GetStdHandle, STD_OUTPUT_HANDLE
+    mov [hConsole], eax
+    invoke SetConsoleTextAttribute, eax, 7
+    invoke StdOut, addr msgInicio
+
+    ; inicializar tablero
+    invoke RtlZeroMemory, addr tablero, 200
+
+    ; bucle principal
+bucle_juego:
+    ; elegir nueva pieza
+    invoke GetTickCount
+    mov ecx, 3
+    xor edx, edx
+    div ecx
+    mov piezaActual, edx
+    mov fila, 0
+    mov columna, 4
+
+    ; verificar si puede colocar pieza
+    call verificar_colision
+    cmp eax, 1
+    je game_over
+
+    ; bucle de caída
+bucle_caida:
+    ; dibujar tablero
+    call dibujar_tablero
+
+    ; esperar
+    invoke Sleep, velocidad
+
+    ; intentar mover abajo
+    inc fila
+    call verificar_colision
+    cmp eax, 1
+    je revert_and_fijar
+    jmp mover_lateral
+
+revert_and_fijar:
+    dec fila
+    call fijar_pieza
+    call borrar_lineas
+    jmp bucle_juego
+
+mover_lateral:
+    ; leer teclado
+    invoke GetAsyncKeyState, 'A'
+    test ax, 8000h
+    jz check_d
+    dec columna
+    call verificar_colision
+    cmp eax, 1
+    jne check_d
+    inc columna  ; revertir
+check_d:
+    invoke GetAsyncKeyState, 'D'
+    test ax, 8000h
+    jz check_s
+    inc columna
+    call verificar_colision
+    cmp eax, 1
+    jne check_s
+    dec columna  ; revertir
+check_s:
+    invoke GetAsyncKeyState, 'S'
+    test ax, 8000h
+    jz end_input
+    inc fila
+    call verificar_colision
+    cmp eax, 1
+    je revert_and_fijar
+end_input:
+    jmp bucle_caida
+
+game_over:
+    invoke StdOut, addr msgGameOver
+    invoke ExitProcess, 0
+
+END start
