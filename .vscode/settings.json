@@ -1,0 +1,6 @@
+{
+    "asm.compilerPath": "C:\\masm32\\bin\\ml.exe",
+    "asm.linkerPath": "C:\\masm32\\bin\\link.exe",
+    "asm.compileArgs": ["/c", "/coff"],
+    "asm.linkArgs": ["/subsystem:console"]
+}
