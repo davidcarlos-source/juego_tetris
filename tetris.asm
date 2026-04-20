@@ -61,7 +61,7 @@ verificar_j:
     add eax, ecx
     cmp eax, [alto]
     jge collision
-    imul eax, ancho
+    imul eax, [ancho]
     add eax, ebp
     cmp tablero[eax], 0
     jne collision
@@ -164,7 +164,7 @@ borrar_lineas endp
 
 ; función para dibujar tablero
 dibujar_tablero proc
-    cls
+    invoke SetConsoleCursorPosition, [hConsole], 0
     invoke SetConsoleTextAttribute, [hConsole], 7
     invoke StdOut, chr$("+--------------------+", 13, 10)
     xor ebx, ebx  ; r = 0 to 19
@@ -176,6 +176,8 @@ dibujar_r:
 dibujar_c:
     cmp edi, [ancho]
     je dibujar_next_r
+    push ebx
+    push edi
     ; check if current piece covers this pos
     mov ebp, 0  ; is_piece = 0
     mov esi, OFFSET formas
@@ -237,6 +239,8 @@ draw_space:
     invoke SetConsoleTextAttribute, [hConsole], 7
     invoke StdOut, chr$("  ")
 next_c:
+    pop edi
+    pop ebx
     inc edi
     jmp dibujar_c
 dibujar_next_r:
