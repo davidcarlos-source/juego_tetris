@@ -254,6 +254,12 @@ start:
     invoke AllocConsole
     invoke GetStdHandle, STD_OUTPUT_HANDLE
     mov [hConsole], eax
+
+    ; Configuración de terminal
+    invoke SetConsoleOutputCP, 437
+    invoke SetConsoleCP, 437
+
+    ; configuración de atributos de consola
     invoke SetConsoleTextAttribute, eax, 7
     invoke StdOut, addr msgInicio
 
