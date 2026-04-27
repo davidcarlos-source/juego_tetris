@@ -19,22 +19,98 @@ includelib \masm32\lib\masm32.lib
     fila dd 0
     columna dd 4
     velocidad dd 500
+    rotacionActual dd 0  ; Nueva: estado de rotación (0-3)
     hConsole dd 0
     msgInicio db "Tetris en MASM32", 13, 10, 0
     msgGameOver db "GAME OVER!", 13, 10, 0
-    formas dd offset formaCuadrado, offset formaLineaV, offset formaLineaH
-    colores dd 4, 2, 6  ; rojo, verde, amarillo
-    formaCuadrado db 1,1,0,0, 1,1,0,0, 0,0,0,0, 0,0,0,0
-    formaLineaV db 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0
-    formaLineaH db 1,1,1,1, 0,0,0,0, 0,0,0,0, 0,0,0,0
+    
+    ; Piezas con rotaciones (cada pieza tiene 4 matrices de 4x4)
+    ; I-piece (línea)
+    formaI dd offset formaI0, offset formaI1, offset formaI2, offset formaI3
+    formaI0 db 0,0,0,0, 1,1,1,1, 0,0,0,0, 0,0,0,0
+    formaI1 db 0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,1,0
+    formaI2 db 0,0,0,0, 0,0,0,0, 1,1,1,1, 0,0,0,0
+    formaI3 db 0,1,0,0, 0,1,0,0, 0,1,0,0, 0,1,0,0
+    
+    ; O-piece (cuadrado)
+    formaO dd offset formaO0, offset formaO1, offset formaO2, offset formaO3
+    formaO0 db 1,1,0,0, 1,1,0,0, 0,0,0,0, 0,0,0,0
+    formaO1 db 1,1,0,0, 1,1,0,0, 0,0,0,0, 0,0,0,0  ; Misma para todas las rotaciones
+    formaO2 db 1,1,0,0, 1,1,0,0, 0,0,0,0, 0,0,0,0
+    formaO3 db 1,1,0,0, 1,1,0,0, 0,0,0,0, 0,0,0,0
+    
+    ; T-piece
+    formaT dd offset formaT0, offset formaT1, offset formaT2, offset formaT3
+    formaT0 db 0,1,0,0, 1,1,1,0, 0,0,0,0, 0,0,0,0
+    formaT1 db 0,1,0,0, 0,1,1,0, 0,1,0,0, 0,0,0,0
+    formaT2 db 0,0,0,0, 1,1,1,0, 0,1,0,0, 0,0,0,0
+    formaT3 db 0,1,0,0, 1,1,0,0, 0,1,0,0, 0,0,0,0
+    
+    ; S-piece
+    formaS dd offset formaS0, offset formaS1, offset formaS2, offset formaS3
+    formaS0 db 0,1,1,0, 1,1,0,0, 0,0,0,0, 0,0,0,0
+    formaS1 db 0,1,0,0, 0,1,1,0, 0,0,1,0, 0,0,0,0
+    formaS2 db 0,0,0,0, 0,1,1,0, 1,1,0,0, 0,0,0,0
+    formaS3 db 1,0,0,0, 1,1,0,0, 0,1,0,0, 0,0,0,0
+    
+    ; Z-piece
+    formaZ dd offset formaZ0, offset formaZ1, offset formaZ2, offset formaZ3
+    formaZ0 db 1,1,0,0, 0,1,1,0, 0,0,0,0, 0,0,0,0
+    formaZ1 db 0,0,1,0, 0,1,1,0, 0,1,0,0, 0,0,0,0
+    formaZ2 db 0,0,0,0, 1,1,0,0, 0,1,1,0, 0,0,0,0
+    formaZ3 db 0,1,0,0, 1,1,0,0, 1,0,0,0, 0,0,0,0
+    
+    ; J-piece
+    formaJ dd offset formaJ0, offset formaJ1, offset formaJ2, offset formaJ3
+    formaJ0 db 1,0,0,0, 1,1,1,0, 0,0,0,0, 0,0,0,0
+    formaJ1 db 0,1,1,0, 0,1,0,0, 0,1,0,0, 0,0,0,0
+    formaJ2 db 0,0,0,0, 1,1,1,0, 0,0,1,0, 0,0,0,0
+    formaJ3 db 0,1,0,0, 0,1,0,0, 1,1,0,0, 0,0,0,0
+    
+    ; L-piece
+    formaL dd offset formaL0, offset formaL1, offset formaL2, offset formaL3
+    formaL0 db 0,0,1,0, 1,1,1,0, 0,0,0,0, 0,0,0,0
+    formaL1 db 0,1,0,0, 0,1,0,0, 0,1,1,0, 0,0,0,0
+    formaL2 db 0,0,0,0, 1,1,1,0, 1,0,0,0, 0,0,0,0
+    formaL3 db 1,1,0,0, 0,1,0,0, 0,1,0,0, 0,0,0,0
+    
+    ; Array de piezas (ahora 7 piezas)
+    formas dd offset formaI, offset formaO, offset formaT, offset formaS, offset formaZ, offset formaJ, offset formaL
+    colores dd 1, 4, 2, 6, 5, 3, 7  ; Colores para cada pieza (azul, rojo, verde, amarillo, magenta, cyan, blanco)
 
 .code
+
+; Nueva función para rotar pieza
+rotar_pieza proc
+    mov eax, [rotacionActual]
+    inc eax
+    cmp eax, 4
+    jl no_reset
+    xor eax, eax  ; Reset a 0 si llega a 4
+no_reset:
+    mov [rotacionActual], eax
+    call verificar_colision
+    cmp eax, 1
+    jne rotacion_ok
+    ; Si colisión, revertir rotación
+    mov eax, [rotacionActual]
+    dec eax
+    cmp eax, -1
+    jne no_underflow
+    mov eax, 3
+no_underflow:
+    mov [rotacionActual], eax
+rotacion_ok:
+    ret
+rotar_pieza endp
 
 ; función para verificar colisión
 verificar_colision proc
     mov esi, OFFSET formas
     mov eax, [piezaActual]
-    mov esi, [esi + eax*4]
+    mov esi, [esi + eax*4]  ; Obtener array de rotaciones
+    mov eax, [rotacionActual]
+    mov esi, [esi + eax*4]  ; Obtener forma actual
     xor ecx, ecx  ; i = 0 to 3
 verificar_i:
     cmp ecx, 4
@@ -83,6 +159,8 @@ verificar_colision endp
 fijar_pieza proc
     mov esi, OFFSET formas
     mov eax, [piezaActual]
+    mov esi, [esi + eax*4]
+    mov eax, [rotacionActual]
     mov esi, [esi + eax*4]
     xor ecx, ecx
 fijar_i:
@@ -183,6 +261,8 @@ dibujar_c:
     mov esi, OFFSET formas
     mov edx, [piezaActual]
     mov esi, [esi + edx*4]
+    mov edx, [rotacionActual]
+    mov esi, [esi + edx*4]  ; Usar rotación actual
     xor ecx, ecx  ; i
 check_piece_i:
     cmp ecx, 4
@@ -272,14 +352,15 @@ start:
 
     ; bucle principal
 bucle_juego:
-    ; elegir nueva pieza
+    ; elegir nueva pieza (ahora 7 piezas)
     invoke GetTickCount
-    mov ecx, 3
+    mov ecx, 7
     xor edx, edx
     div ecx
     mov piezaActual, edx
     mov fila, 0
     mov columna, 4
+    mov rotacionActual, 0  ; Reset rotación
 
     ; verificar si puede colocar pieza
     call verificar_colision
@@ -320,12 +401,17 @@ mover_lateral:
 check_d:
     invoke GetAsyncKeyState, 'D'
     test ax, 8000h
-    jz check_s
+    jz check_g
     inc columna
     call verificar_colision
     cmp eax, 1
-    jne check_s
+    jne check_g
     dec columna  ; revertir
+check_g:
+    invoke GetAsyncKeyState, 'G'
+    test ax, 8000h
+    jz check_s
+    call rotar_pieza  ; Nueva: rotar al presionar G
 check_s:
     invoke GetAsyncKeyState, 'S'
     test ax, 8000h
