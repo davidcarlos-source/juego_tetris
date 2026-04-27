@@ -24,7 +24,10 @@ includelib \masm32\lib\masm32.lib
     hConsole dd 0
     msgInicio db "Tetris en MASM32", 13, 10, 0
     msgGameOver db "GAME OVER!", 13, 10, 0
+    msgTerminando db "Terminando juego...", 13, 10, 0
     cursorInfo CONSOLE_CURSOR_INFO <>  ; Para ocultar cursor
+    csbi CONSOLE_SCREEN_BUFFER_INFO <>  ; Para clear
+    written dd 0
     
     ; Piezas con rotaciones (cada pieza tiene 4 matrices de 4x4)
     ; I-piece (línea)
@@ -105,6 +108,18 @@ no_underflow:
 rotacion_ok:
     ret
 rotar_pieza endp
+
+; función para limpiar pantalla
+clear_screen proc
+    invoke GetConsoleScreenBufferInfo, [hConsole], addr csbi
+    mov ax, word ptr [csbi]  ; dwSize.X
+    mov bx, word ptr [csbi + 2]  ; dwSize.Y
+    mul bx
+    invoke FillConsoleOutputCharacter, [hConsole], 32, eax, 0, addr written
+    invoke FillConsoleOutputAttribute, [hConsole], 7, eax, 0, addr written
+    invoke SetConsoleCursorPosition, [hConsole], 0
+    ret
+clear_screen endp
 
 ; función para verificar colisión
 verificar_colision proc
@@ -346,6 +361,9 @@ start:
     mov cursorInfo.bVisible, FALSE
     invoke SetConsoleCursorInfo, [hConsole], addr cursorInfo
 
+    ; Limpiar terminal inicial
+    call clear_screen
+
     ; Configuración de terminal
     invoke SetConsoleOutputCP, 437
     invoke SetConsoleCP, 437
@@ -407,11 +425,19 @@ check_g:
 check_s:
     invoke GetAsyncKeyState, 'S'
     test ax, 8000h
-    jz check_fall
+    jz check_q
     inc fila
     call verificar_colision
     cmp eax, 1
     je revert_and_fijar
+check_q:
+    invoke GetAsyncKeyState, 'Q'
+    test ax, 8000h
+    jz check_fall
+    ; Salir del juego
+    invoke StdOut, addr msgTerminando
+    call clear_screen
+    invoke ExitProcess, 0
 check_fall:
     ; check timing para caer
     invoke GetTickCount
@@ -435,6 +461,7 @@ revert_and_fijar:
 
 game_over:
     invoke StdOut, addr msgGameOver
+    call clear_screen
     invoke ExitProcess, 0
 
 END start
