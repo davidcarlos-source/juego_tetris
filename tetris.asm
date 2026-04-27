@@ -6,11 +6,13 @@ include \masm32\include\windows.inc
 include \masm32\include\kernel32.inc
 include \masm32\include\user32.inc
 include \masm32\include\masm32.inc
+include \masm32\include\winmm.inc
 include \masm32\macros\macros.asm
 
 includelib \masm32\lib\kernel32.lib
 includelib \masm32\lib\user32.lib
 includelib \masm32\lib\masm32.lib
+includelib \masm32\lib\winmm.lib
 .data
     tablero db 200 dup(0)  ; 10 columnas x 20 filas
     ancho dd 10
@@ -30,6 +32,7 @@ includelib \masm32\lib\masm32.lib
     msgInicio db "Tetris en MASM32", 13, 10, 0
     msgGameOver db "GAME OVER!", 13, 10, 0
     msgTerminando db "Terminando juego...", 13, 10, 0
+    musicFile db "tetris_music.wav", 0
     cursorInfo CONSOLE_CURSOR_INFO <>  ; Para ocultar cursor
     csbi CONSOLE_SCREEN_BUFFER_INFO <>  ; Para clear
     written dd 0
@@ -377,6 +380,9 @@ start:
     invoke SetConsoleTextAttribute, eax, 7
     invoke StdOut, addr msgInicio
 
+    ; Reproducir música de fondo
+    invoke PlaySound, addr musicFile, 0, SND_FILENAME or SND_LOOP or SND_ASYNC
+
     ; inicializar tablero
     invoke RtlZeroMemory, addr tablero, 200
 
@@ -471,6 +477,7 @@ check_Q:
     jz not_Q
     cmp prevQ, 0
     jne skip_Q
+    invoke PlaySound, 0, 0, 0  ; Detener música
     invoke StdOut, addr msgTerminando
     call clear_screen
     invoke ExitProcess, 0
@@ -498,6 +505,7 @@ revert_and_fijar:
     jmp bucle_juego
 
 game_over:
+    invoke PlaySound, 0, 0, 0  ; Detener música
     invoke StdOut, addr msgGameOver
     call clear_screen
     invoke ExitProcess, 0
