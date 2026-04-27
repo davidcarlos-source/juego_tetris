@@ -21,6 +21,11 @@ includelib \masm32\lib\masm32.lib
     velocidad dd 500
     rotacionActual dd 0  ; Nueva: estado de rotación (0-3)
     lastFall dd 0  ; Nueva: para timing de caída
+    prevA dd 0
+    prevD dd 0
+    prevG dd 0
+    prevS dd 0
+    prevQ dd 0
     hConsole dd 0
     msgInicio db "Tetris en MASM32", 13, 10, 0
     msgGameOver db "GAME OVER!", 13, 10, 0
@@ -402,43 +407,76 @@ bucle_caida:
     ; leer teclado
     invoke GetAsyncKeyState, 'A'
     test ax, 8000h
-    jz check_d
+    jz not_A
+    cmp prevA, 0
+    jne skip_A
     dec columna
     call verificar_colision
     cmp eax, 1
-    jne check_d
-    inc columna  ; revertir
-check_d:
+    jne ok_A
+    inc columna
+ok_A:
+    mov prevA, 1
+    jmp check_D
+not_A:
+    mov prevA, 0
+skip_A:
+check_D:
     invoke GetAsyncKeyState, 'D'
     test ax, 8000h
-    jz check_g
+    jz not_D
+    cmp prevD, 0
+    jne skip_D
     inc columna
     call verificar_colision
     cmp eax, 1
-    jne check_g
-    dec columna  ; revertir
-check_g:
+    jne ok_D
+    dec columna
+ok_D:
+    mov prevD, 1
+    jmp check_G
+not_D:
+    mov prevD, 0
+skip_D:
+check_G:
     invoke GetAsyncKeyState, 'G'
     test ax, 8000h
-    jz check_s
-    call rotar_pieza  ; Nueva: rotar al presionar G
-check_s:
+    jz not_G
+    cmp prevG, 0
+    jne skip_G
+    call rotar_pieza
+    mov prevG, 1
+    jmp check_S
+not_G:
+    mov prevG, 0
+skip_G:
+check_S:
     invoke GetAsyncKeyState, 'S'
     test ax, 8000h
-    jz check_q
+    jz not_S
+    cmp prevS, 0
+    jne skip_S
     inc fila
     call verificar_colision
     cmp eax, 1
     je revert_and_fijar
-check_q:
+    mov prevS, 1
+    jmp check_Q
+not_S:
+    mov prevS, 0
+skip_S:
+check_Q:
     invoke GetAsyncKeyState, 'Q'
     test ax, 8000h
-    jz check_fall
-    ; Salir del juego
+    jz not_Q
+    cmp prevQ, 0
+    jne skip_Q
     invoke StdOut, addr msgTerminando
     call clear_screen
     invoke ExitProcess, 0
-check_fall:
+not_Q:
+    mov prevQ, 0
+skip_Q:
     ; check timing para caer
     invoke GetTickCount
     mov ebx, eax
