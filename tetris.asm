@@ -20,9 +20,11 @@ includelib \masm32\lib\masm32.lib
     columna dd 4
     velocidad dd 500
     rotacionActual dd 0  ; Nueva: estado de rotación (0-3)
+    lastFall dd 0  ; Nueva: para timing de caída
     hConsole dd 0
     msgInicio db "Tetris en MASM32", 13, 10, 0
     msgGameOver db "GAME OVER!", 13, 10, 0
+    cursorInfo CONSOLE_CURSOR_INFO <>  ; Para ocultar cursor
     
     ; Piezas con rotaciones (cada pieza tiene 4 matrices de 4x4)
     ; I-piece (línea)
@@ -339,6 +341,11 @@ start:
     invoke GetStdHandle, STD_OUTPUT_HANDLE
     mov [hConsole], eax
 
+    ; Ocultar cursor
+    invoke GetConsoleCursorInfo, [hConsole], addr cursorInfo
+    mov cursorInfo.bVisible, FALSE
+    invoke SetConsoleCursorInfo, [hConsole], addr cursorInfo
+
     ; Configuración de terminal
     invoke SetConsoleOutputCP, 437
     invoke SetConsoleCP, 437
@@ -361,6 +368,8 @@ bucle_juego:
     mov fila, 0
     mov columna, 4
     mov rotacionActual, 0  ; Reset rotación
+    invoke GetTickCount
+    mov lastFall, eax  ; Inicializar timing por pieza
 
     ; verificar si puede colocar pieza
     call verificar_colision
@@ -372,23 +381,6 @@ bucle_caida:
     ; dibujar tablero
     call dibujar_tablero
 
-    ; esperar
-    invoke Sleep, velocidad
-
-    ; intentar mover abajo
-    inc fila
-    call verificar_colision
-    cmp eax, 1
-    je revert_and_fijar
-    jmp mover_lateral
-
-revert_and_fijar:
-    dec fila
-    call fijar_pieza
-    call borrar_lineas
-    jmp bucle_juego
-
-mover_lateral:
     ; leer teclado
     invoke GetAsyncKeyState, 'A'
     test ax, 8000h
@@ -415,13 +407,31 @@ check_g:
 check_s:
     invoke GetAsyncKeyState, 'S'
     test ax, 8000h
-    jz end_input
+    jz check_fall
     inc fila
     call verificar_colision
     cmp eax, 1
     je revert_and_fijar
-end_input:
+check_fall:
+    ; check timing para caer
+    invoke GetTickCount
+    mov ebx, eax
+    sub ebx, lastFall
+    cmp ebx, velocidad
+    jl no_fall
+    mov lastFall, eax
+    inc fila
+    call verificar_colision
+    cmp eax, 1
+    je revert_and_fijar
+no_fall:
     jmp bucle_caida
+
+revert_and_fijar:
+    dec fila
+    call fijar_pieza
+    call borrar_lineas
+    jmp bucle_juego
 
 game_over:
     invoke StdOut, addr msgGameOver
